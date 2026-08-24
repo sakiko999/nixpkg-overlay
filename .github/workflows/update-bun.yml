@@ -1,0 +1,53 @@
+name: update-bun
+
+on:
+  schedule:
+    - cron: "17 2 * * *" # 每天 02:17 UTC 检查
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Check for new bun release
+        id: check
+        run: |
+          bash scripts/update-bun.sh
+          if git diff --quiet -- pkgs/bun/package.nix; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No update needed."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            ver="$(grep -oP 'version = "\K[^"]+' pkgs/bun/package.nix | head -n1)"
+            echo "version=$ver" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build check (x86_64-linux)
+        if: steps.check.outputs.changed == 'true'
+        run: nix build .#bun --no-link --print-build-logs
+
+      - name: Create Pull Request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update/bun-${{ steps.check.outputs.version }}
+          title: "bun: ${{ steps.check.outputs.version }}"
+          body: |
+            Automated update to `oven-sh/bun` `${{ steps.check.outputs.version }}`.
+
+            - Source: https://github.com/oven-sh/bun/releases
+            - Updated by `scripts/update-bun.sh` via `.github/workflows/update-bun.yml`.
+
+            Please verify `nix build .#bun` passes before merging.
+          commit-message: "bun: ${{ steps.check.outputs.version }}"
+          labels: automated
+          delete-branch: true
