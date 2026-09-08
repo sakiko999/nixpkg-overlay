@@ -20,6 +20,8 @@ jobs:
 
       - name: Check for new bun release
         id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           bash scripts/update-bun.sh
           if git diff --quiet -- pkgs/bun/package.nix; then

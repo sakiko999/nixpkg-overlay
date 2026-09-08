@@ -9,7 +9,7 @@ PKG="$ROOT/pkgs/bun/package.nix"
 current_version="$(grep -oP 'version = "\K[^"]+' "$PKG" | head -n1)"
 echo "当前版本: $current_version"
 
-latest_tag="$(curl -fsSL https://api.github.com/repos/oven-sh/bun/releases/latest | jq -r '.tag_name')"
+latest_tag="$(gh api repos/oven-sh/bun/releases/latest --jq '.tag_name')"
 latest_version="${latest_tag#bun-v}"
 echo "上游最新: $latest_version ($latest_tag)"
 
@@ -58,10 +58,11 @@ text = open(pkg).read()
 text = re.sub(r'version = "[^"]+";', f'version = "{ver}";', text, count=1)
 # 2) 逐平台 hash：定位 "platform" = fetchurl { ... hash = "sha256-..." }
 for plat, h in hashes.items():
-    pat = re.compile(r'("' + re.escape(plat) + r'"\s*=\s*fetchurl\s*\{[^}]*?hash\s*=\s*")sha256-[^"]+', re.DOTALL)
+    # 注意用 .*? 而非 [^}]*?：url 里的 ${finalAttrs.version} 含 '}' 会截断匹配
+    pat = re.compile(r'("' + re.escape(plat) + r'"\s*=\s*fetchurl\s*\{.*?hash\s*=\s*")sha256-[^"]+', re.DOTALL)
     text, n = pat.subn(r'\g<1>' + h, text)
     if n == 0:
-        print(f"WARNING: 未匹配到 {plat} 的 hash 块", file=sys.stderr)
+        sys.exit(f"ERROR: 未匹配到 {plat} 的 hash 块")
 open(pkg, "w").write(text)
 PY
 
